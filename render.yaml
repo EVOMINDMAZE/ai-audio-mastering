@@ -36,7 +36,16 @@ services:
       # the existing CMD already honours ${PORT:-7860}.
       - key: JOB_TMP_DIR
         value: /tmp/audio_jobs
+      # NOTE: CORS_ORIGINS is parsed by pydantic-settings as a JSON array
+      # for the List[str] field — pass a JSON array, not a bare "*".
       - key: CORS_ORIGINS
-        value: "*"
+        value: '["*"]'
       - key: SUPABASE_ENABLED
         value: "false"
+      # main.py resolves the static frontend directory as
+      #   _BACKEND_DIR = Path(__file__).resolve().parent  # → /app/backend/app
+      # which is one level too shallow — the Dockerfile copies dist to
+      # /app/backend/frontend_dist (two levels above main.py). Override here
+      # until main.py is fixed upstream.
+      - key: FRONTEND_DIST
+        value: /app/backend/frontend_dist

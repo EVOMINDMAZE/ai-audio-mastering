@@ -300,6 +300,23 @@ render deploys trigger --service ai-audio-mastering   # rebuild now
 - **No custom domain on free tier** — you'll get a `*.onrender.com` subdomain.
 - **One region** — defaults to `oregon` (override in `render.yaml` if needed).
 
+### Verified live URL (2026-06-26)
+
+```
+https://ai-audio-mastering.onrender.com       → React SPA (200 OK)
+https://ai-audio-mastering.onrender.com/health → {"status":"ok","version":"0.1.0"} (200 OK)
+```
+
+> **Two env-var gotchas** baked into [`render.yaml`](render.yaml) — don't undo them:
+>
+> 1. `CORS_ORIGINS` is `["*"]` (JSON-encoded array), **not** `"*"`. Bare `*` causes
+>    `pydantic_settings.sources.SettingsError` because pydantic-settings JSON-decodes
+>    `List[str]` fields *before* the field validator runs.
+> 2. `FRONTEND_DIST=/app/backend/frontend_dist` overrides the wrong default
+>    `_BACKEND_DIR = Path(__file__).resolve().parent` in
+>    [`backend/app/main.py`](backend/app/main.py) line 35 — without it, the SPA
+>    mount is silently skipped and `/` returns 404.
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
