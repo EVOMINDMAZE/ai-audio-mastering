@@ -1,0 +1,47 @@
+# ---- Version control ---------------------------------------------------------
+.git
+.gitignore
+.gitattributes
+
+# ---- Virtualenvs & Python caches -------------------------------------------
+.venv
+venv
+env
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+htmlcov
+
+# ---- Node / frontend build artefacts ---------------------------------------
+**/node_modules
+**/dist
+**/.vite
+**/.next
+**/.cache
+
+# ---- Editor / OS junk -------------------------------------------------------
+.idea
+.vscode
+.DS_Store
+Thumbs.db
+
+# ---- Spec / planning docs (not part of the app) ----------------------------
+.trae
+specs
+plans
+*.md.bak
+
+# ---- Local secrets / env ----------------------------------------------------
+.env
+.env.*
+**/.env
+**/.env.*
+
+# ---- Tests (kept in source for local dev, not needed in the image) --------
+backend/tests
+tests

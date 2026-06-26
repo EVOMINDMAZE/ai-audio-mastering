@@ -1,0 +1,56 @@
+# ---- Version control --------------------------------------------------------
+# Lockfile IS committed (npm ci needs it, pip doesn't have one in this repo).
+*.bak
+*.swp
+*.swo
+
+# ---- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.tox/
+*.egg-info/
+dist/
+build/
+
+# ---- Node / frontend -------------------------------------------------------
+**/node_modules/
+**/dist/
+**/.vite/
+**/.next/
+**/.cache/
+**/.parcel-cache/
+**/tsconfig.tsbuildinfo
+
+# ---- Editor / OS junk ------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*.iml
+
+# ---- Local secrets / env ---------------------------------------------------
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+
+# ---- Spec / planning docs (kept in .trae for local reference only) ---------
+.trae/
+
+# ---- Tests are committed (small, useful for CI) --------------------------
+
+# ---- HF Spaces / Docker ----------------------------------------------------
+# Exclude build artefacts that the Dockerfile rebuilds
+frontend/dist/
