@@ -54,3 +54,10 @@ Thumbs.db
 # ---- HF Spaces / Docker ----------------------------------------------------
 # Exclude build artefacts that the Dockerfile rebuilds
 frontend/dist/
+
+# ---- Koyeb -----------------------------------------------------------------
+# Defensive: ignore a locally-vendored koyeb CLI binary if it ever ends up in
+# the repo. Normally installed via brew / curl install script, not vendored.
+/koyeb
+/koyeb-cli
+koyeb-cli-*

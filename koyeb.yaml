@@ -1,0 +1,59 @@
+# =============================================================================
+# Koyeb deploy reference — AI Audio Mastering
+# =============================================================================
+# NOTE: This file is **documentation**, not a config the CLI auto-reads.
+# The deploy is performed by `scripts/deploy_to_koyeb.sh`, which mirrors
+# every field below as `koyeb deploy` flags. Keep the two in sync.
+#
+# Equivalent CLI invocation (see scripts/deploy_to_koyeb.sh):
+#   koyeb deploy . ai-audio-mastering/ai-audio-mastering \
+#     --archive-builder docker \
+#     --archive-docker-dockerfile Dockerfile \
+#     --type web \
+#     --ports 7860:http \
+#     --checks 7860:http:/health \
+#     --env APP_ENV=production --env PORT=7860 \
+#     --env JOB_TMP_DIR=/tmp/audio_jobs --env CORS_ORIGINS='*' \
+#     --env SUPABASE_ENABLED=false \
+#     --regions fra --instance-type nano \
+#     --min-scale 1 --max-scale 1 --wait
+#
+# Requires:
+#   - `koyeb` CLI installed: https://docs.koyeb.com/docs/install-koyeb-cli
+#   - Logged in via `koyeb login` (GitHub OAuth) or `KOYEB_TOKEN` env var
+#   - This repo pushed to GitHub at https://github.com/EVOMINDMAZE/ai-audio-mastering
+#     (override with `--git-url` if you forked it)
+#
+# On every push to `main`, Koyeb auto-rebuilds this service from the same
+# Dockerfile that powers the HF Spaces deploy, so behaviour matches both
+# environments — including the ephemeral `JOB_TMP_DIR=/tmp/audio_jobs` disk.
+# =============================================================================
+
+name: ai-audio-mastering        # → CLI: app/service name
+type: web                       # → CLI: --type web
+archive_builder: docker         # → CLI: --archive-builder docker
+dockerfile: Dockerfile          # → CLI: --archive-docker-dockerfile Dockerfile
+instance_type: nano             # → CLI: --instance-type nano
+regions:                        # → CLI: --regions fra
+  - fra
+ports:                          # → CLI: --ports 7860:http
+  - port: 7860
+    protocol: http
+healthchecks:                   # → CLI: --checks 7860:http:/health
+  - type: http
+    path: /health
+    port: 7860
+env:                            # → CLI: --env KEY=VALUE (×5)
+  - key: APP_ENV
+    value: production
+  - key: PORT
+    value: "7860"
+  - key: JOB_TMP_DIR
+    value: /tmp/audio_jobs
+  - key: CORS_ORIGINS
+    value: "*"
+  - key: SUPABASE_ENABLED
+    value: "false"
+scalings:                       # → CLI: --min-scale 1 --max-scale 1
+  - min: 1
+    max: 1

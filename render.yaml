@@ -1,0 +1,42 @@
+# =============================================================================
+# Render Blueprint — AI Audio Mastering
+# =============================================================================
+# Apply via Render Dashboard:
+#   1. Go to https://dashboard.render.com/blueprints
+#   2. Click "New Blueprint Instance"
+#   3. Connect the GitHub repo (EVOMINDMAZE/ai-audio-mastering)
+#   4. Render detects this file and creates the web service
+#
+# Validate locally with:
+#   render blueprints validate render.yaml
+#
+# On every push to `main`, Render auto-rebuilds the service from the same
+# Dockerfile used for HF Spaces and Koyeb. Behaviour matches both environments
+# — including the ephemeral `JOB_TMP_DIR=/tmp/audio_jobs` disk.
+#
+# Note: free web services on Render sleep after 15 minutes of inactivity
+# (~30–50 s cold start). The free plan is the only no-credit-card option on
+# Render; paid Starter ($7/mo) removes the sleep.
+# =============================================================================
+
+services:
+  - type: web
+    name: ai-audio-mastering
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    region: oregon
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: APP_ENV
+        value: production
+      # PORT is set automatically by Render to 10000 on free tier;
+      # the existing CMD already honours ${PORT:-7860}.
+      - key: JOB_TMP_DIR
+        value: /tmp/audio_jobs
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: SUPABASE_ENABLED
+        value: "false"

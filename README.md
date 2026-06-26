@@ -140,6 +140,166 @@ auto-sync — you have to push manually each time.
   free CPU tier for a 3-minute track.
 - **No file persistence between requests**: each upload is processed in isolation.
 
+---
+
+## Deploy to Koyeb (always-on, free, no credit card)
+
+Hugging Face Spaces sleeps after 48h of inactivity. If you want the app to
+stay up 24/7 without paying, deploy the same Dockerfile to **Koyeb** —
+free-tier nano instances run forever with no card on file.
+
+See the full comparison in [`.trae/specs/free-cloud-hosting-options/spec.md`](.trae/specs/free-cloud-hosting-options/spec.md).
+
+### Step 1 — Install the Koyeb CLI
+
+```bash
+# macOS
+brew install koyeb/tap/koyeb
+
+# Linux / anywhere
+curl -fsSL https://raw.githubusercontent.com/koyeb/koyeb-cli/main/install.sh | bash
+```
+
+Verify: `koyeb --version`.
+
+### Step 2 — Log in to Koyeb
+
+```bash
+koyeb login       # opens your browser for GitHub OAuth
+```
+
+Or, headless / CI:
+
+```bash
+export KOYEB_TOKEN=<your-token>   # create at https://app.koyeb.com/account/settings/api
+```
+
+### Step 3 — Deploy
+
+From the repo root:
+
+```bash
+./scripts/deploy_to_koyeb.sh
+```
+
+The script validates auth, deploys [`koyeb.yaml`](koyeb.yaml) (Dockerfile
+build, port `7860`, `/health` check, `nano` instance, Frankfurt region), and
+prints the public URL when the service becomes `HEALTHY`.
+
+Your app will be live at:
+
+```
+https://ai-audio-mastering-<your-koyeb-username>.koyeb.app
+```
+
+### Step 4 — Manage the service
+
+```bash
+koyeb service get    ai-audio-mastering   # status + URL
+koyeb service logs   ai-audio-mastering   # tail build & runtime logs
+koyeb service rollback ai-audio-mastering # roll back to previous deploy
+koyeb service delete ai-audio-mastering   # tear it down
+```
+
+Pushes to the `main` branch of the connected GitHub repo auto-trigger a
+rebuild — same DX as the HF Spaces path.
+
+### Caveats (Koyeb free tier)
+
+- **256 MB RAM / shared vCPU** — fine for the analysis + mastering endpoints
+  on tracks up to ~5 min; very long tracks may need to be uploaded in chunks
+  (the [`chunked-download`](.trae/specs/chunked-download/spec.md) spec already
+  handles this client-side).
+- **No persistent disk** — mastered WAVs are returned as a direct download
+  and not stored between requests. Set `SUPABASE_ENABLED=true` in
+  [`koyeb.yaml`](koyeb.yaml) and provide `SUPABASE_URL` / `SUPABASE_SERVICE_KEY`
+  env vars to persist results to your own Supabase bucket.
+- **One region** — `fra` (Frankfurt) is the default free-tier region.
+- **No custom domain on free tier** — you'll get a `*.koyeb.app` subdomain.
+
+---
+
+## Deploy to Render (free, no credit card)
+
+> ⚠️ **Caveat**: Render free web services **sleep after 15 minutes of
+> inactivity**. The first request after sleep takes ~30–50 s. For an
+> always-on free deploy, see [Northflank](https://northflank.com) instead
+> (separate spec not yet written). HF Spaces has a 48 h sleep.
+
+Koyeb's free tier was paywalled when this README was written. **Render** is
+the next-easiest "no credit card" option that runs the same Dockerfile.
+
+### Step 1 — Install the Render CLI
+
+```bash
+brew install render                                                 # macOS
+# or:
+curl -fsSL https://raw.githubusercontent.com/render-oss/cli/main/bin/install.sh | sh
+```
+
+Verify: `render --version` (returns `Render CLI vX.Y.Z`).
+
+### Step 2 — Sign up (no credit card)
+
+Go to https://dashboard.render.com/register and create a free account.
+Pick the **Free** plan — Render only asks for a card when you upgrade.
+
+### Step 3 — Get a CLI key
+
+1. Open https://dashboard.render.com/settings#cli-keys
+2. Click "Create CLI key"
+3. Copy the token.
+4. Authenticate:
+
+```bash
+render login    # paste the token when prompted
+# or, headless / CI:
+export RENDER_API_KEY=<paste-token-here>
+```
+
+### Step 4 — Validate and apply
+
+```bash
+./scripts/deploy_to_render.sh            # validate + print dashboard steps
+# optional --watch flag polls until the service is Live:
+./scripts/deploy_to_render.sh --watch
+```
+
+The script validates [`render.yaml`](render.yaml), then walks you through
+the dashboard Blueprint apply:
+
+1. Open https://dashboard.render.com/blueprints
+2. Click "New Blueprint Instance"
+3. Pick the GitHub repo `EVOMINDMAZE/ai-audio-mastering`
+4. Confirm the Blueprint name and click "Apply"
+
+Render creates `ai-audio-mastering` as a free web service, builds the
+Dockerfile, exposes port 10000, registers a `/health` check.
+
+Your URL:
+
+```
+https://ai-audio-mastering.onrender.com
+https://ai-audio-mastering.onrender.com/health   (200 OK)
+```
+
+### Step 5 — Manage the service
+
+```bash
+render services list                              # list all services
+render deploys list --service ai-audio-mastering  # deploy history
+render logs --service ai-audio-mastering --tail   # live logs
+render deploys trigger --service ai-audio-mastering   # rebuild now
+```
+
+### Caveats (Render free tier)
+
+- **15-min sleep** — first request after sleep takes ~30–50 s.
+- **No persistent disk** — same as HF Spaces / Koyeb; mastered WAVs come back
+  as a direct download.
+- **No custom domain on free tier** — you'll get a `*.onrender.com` subdomain.
+- **One region** — defaults to `oregon` (override in `render.yaml` if needed).
+
 ## License
 
 MIT — see [LICENSE](./LICENSE).
