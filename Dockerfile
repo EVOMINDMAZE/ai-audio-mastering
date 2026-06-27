@@ -50,12 +50,19 @@ COPY --from=frontend-builder /build/dist /app/backend/frontend_dist
 # deploy (512 MB RAM cap). OMP/MKL/OPENBLAS thread counts are forced to 1
 # so a single render doesn't fan out into multiple BLAS threads that each
 # allocate their own working buffers and push us over the OOM threshold.
+#
+# FRONTEND_DIST override compensates for the wrong default
+# _BACKEND_DIR = Path(__file__).resolve().parent in backend/app/main.py:35
+# (one level too shallow). Without it, _FRONTEND_DIST resolves to the
+# non-existent /app/backend/app/frontend_dist and the SPA mount is
+# silently skipped → / returns 404.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=7860 \
     JOB_TMP_DIR=/tmp/audio_jobs \
     APP_ENV=production \
     CORS_ORIGINS='["*"]' \
+    FRONTEND_DIST=/app/backend/frontend_dist \
     MAX_RENDER_WORKERS=1 \
     MAX_UPLOAD_MB=25 \
     OMP_NUM_THREADS=1 \
