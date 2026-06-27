@@ -307,7 +307,7 @@ https://ai-audio-mastering.onrender.com       → React SPA (200 OK)
 https://ai-audio-mastering.onrender.com/health → {"status":"ok","version":"0.1.0"} (200 OK)
 ```
 
-> **Two env-var gotchas** baked into [`render.yaml`](render.yaml) — don't undo them:
+> **Three env-var / router gotchas** baked into [`render.yaml`](render.yaml) + [`backend/app/main.py`](backend/app/main.py) — don't undo them:
 >
 > 1. `CORS_ORIGINS` is `["*"]` (JSON-encoded array), **not** `"*"`. Bare `*` causes
 >    `pydantic_settings.sources.SettingsError` because pydantic-settings JSON-decodes
@@ -316,6 +316,12 @@ https://ai-audio-mastering.onrender.com/health → {"status":"ok","version":"0.1
 >    `_BACKEND_DIR = Path(__file__).resolve().parent` in
 >    [`backend/app/main.py`](backend/app/main.py) line 35 — without it, the SPA
 >    mount is silently skipped and `/` returns 404.
+> 3. Both routers are registered with `prefix="/api"` in [`main.py`](backend/app/main.py)
+>    so that `POST /api/bass-boost`, `POST /api/master`, etc. match the actual routes.
+>    Without the prefix, requests hit the SPA catch-all (`@app.get("/{full_path:path}")`)
+>    which registers a GET for every path → **405 Method Not Allowed** on POST.
+>    The Vite dev proxy strips `/api` (`rewrite: p => p.replace(/^\/api/, "")`), so this
+>    is a no-op in dev but required in production.
 
 ## License
 
