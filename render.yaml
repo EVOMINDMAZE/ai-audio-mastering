@@ -49,3 +49,22 @@ services:
       # until main.py is fixed upstream.
       - key: FRONTEND_DIST
         value: /app/backend/frontend_dist
+      # Render free tier is 512 MB RAM. Three concurrent renders each hold
+      # ~250 MB (input float32 + pedalboard intermediates + output) — that
+      # OOM-kills the worker. Force serial rendering.
+      - key: MAX_RENDER_WORKERS
+        value: "1"
+      # ~3 minutes of 44.1 kHz / 16-bit stereo WAV. Longer tracks risk OOM
+      # even with the single-worker pool.
+      - key: MAX_UPLOAD_MB
+        value: "25"
+      # Force single-thread BLAS inside numpy / librosa / pedalboard so we
+      # don't fan out into per-thread working buffers.
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+      - key: OPENBLAS_NUM_THREADS
+        value: "1"
+      - key: NUMEXPR_NUM_THREADS
+        value: "1"

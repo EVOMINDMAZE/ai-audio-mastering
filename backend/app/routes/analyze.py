@@ -23,8 +23,11 @@ from ..storage import get_job_dir, safe_filename
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["analyze"])
 
-# Upload size cap (50 MB) — covers ~6 minutes of 44.1kHz/16-bit stereo WAV.
-_MAX_BYTES = 50 * 1024 * 1024
+# Upload size cap. Tuned for Render free-tier 512 MB RAM:
+#   25 MB ≈ 3 minutes of 44.1 kHz / 16-bit stereo WAV.
+# Larger files push pedalboard's intermediate buffers past the OOM threshold
+# even with MAX_RENDER_WORKERS=1. Override via MAX_UPLOAD_MB env var.
+_MAX_BYTES = int(os.environ.get("MAX_UPLOAD_MB", "25")) * 1024 * 1024
 
 
 def _save_upload(upload: UploadFile, job_dir: Path) -> Path:

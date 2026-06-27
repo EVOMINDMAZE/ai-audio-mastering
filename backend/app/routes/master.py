@@ -12,6 +12,7 @@ long audio files.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -31,10 +32,18 @@ router = APIRouter(tags=["master"])
 from .analyze import _save_upload  # noqa: E402  (intentional intra-package reuse)
 
 
-# How many presets to render concurrently. 6 presets on a 4-core machine:
-# leave 1 core for the event loop, use 3 workers, queue the rest. Tuned for
-# the sandbox; in production this should be sized from settings.
-_MAX_RENDER_WORKERS = 3
+# How many presets to render concurrently.
+#
+# Render free-tier web services are limited to 512 MB RAM. Each render of a
+# 3-min 44.1 kHz stereo track holds ~250 MB working set (input float32 +
+# pedalboard intermediates + output). With 3 workers that's ~750 MB peak
+# which exceeds the limit and triggers an OOM kill.
+#
+# Reducing to 1 worker keeps peak memory under control. Total throughput is
+# not significantly worse — DSP is CPU-bound and a single render saturates
+# the free-tier vCPU already; the other workers would just contend for the
+# same cores. The bigger win is deterministic memory headroom.
+_MAX_RENDER_WORKERS = int(os.environ.get("MAX_RENDER_WORKERS", "1"))
 
 # One global thread pool, shared across all jobs. Avoids spinning a new pool
 # per request and bounds total CPU usage on the server.

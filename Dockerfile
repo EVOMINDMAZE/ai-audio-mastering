@@ -46,13 +46,22 @@ COPY backend/ /app/backend/
 # Frontend dist from stage 1
 COPY --from=frontend-builder /build/dist /app/backend/frontend_dist
 
-# Runtime config
+# Runtime config. Defaults keep the image lean for the free-tier Render
+# deploy (512 MB RAM cap). OMP/MKL/OPENBLAS thread counts are forced to 1
+# so a single render doesn't fan out into multiple BLAS threads that each
+# allocate their own working buffers and push us over the OOM threshold.
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PORT=7860 \
     JOB_TMP_DIR=/tmp/audio_jobs \
     APP_ENV=production \
-    CORS_ORIGINS=*
+    CORS_ORIGINS='["*"]' \
+    MAX_RENDER_WORKERS=1 \
+    MAX_UPLOAD_MB=25 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1 \
+    OPENBLAS_NUM_THREADS=1 \
+    NUMEXPR_NUM_THREADS=1
 
 # HF Spaces container orchestration respects $PORT; default to 7860 if absent.
 EXPOSE 7860
