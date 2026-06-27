@@ -96,8 +96,12 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(analyze_routes.router)
-    app.include_router(master_routes.router)
+    # Prefix all API routes with /api so they match the frontend contract
+    # (frontend calls /api/bass-boost, /api/master, etc.) and the backend's
+    # own status_url/download_url responses in master.py. The /api prefix is
+    # NOT used in dev — the Vite proxy strips it via `rewrite: p => p.replace(/^\/api/, "")`.
+    app.include_router(analyze_routes.router, prefix="/api")
+    app.include_router(master_routes.router, prefix="/api")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

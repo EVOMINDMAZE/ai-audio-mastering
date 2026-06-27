@@ -1,10 +1,15 @@
 """
-Route-level tests for the /master, /master/{job_id}/status, and /download endpoints.
+Route-level tests for the /api/master, /api/master/{job_id}/status, and
+/api/download endpoints.
 
 The master endpoint is asynchronous: POST returns a job_id within ~1s, and
 the actual rendering happens in a background thread. Tests poll the /status
 endpoint until the job is "ready" (or "error"), then verify the per-preset
 downloads serve valid 24-bit WAV files.
+
+The `/api` prefix is added by `app.include_router(..., prefix="/api")` in
+main.py — the dev Vite proxy strips it before forwarding to the backend, so
+the same code works in both environments.
 """
 
 from __future__ import annotations
@@ -41,10 +46,10 @@ def wav_bytes() -> bytes:
 
 
 def _wait_until_ready(client: TestClient, job_id: str, timeout_s: float = 60.0):
-    """Poll /master/{job_id}/status until terminal state. Returns the state dict."""
+    """Poll /api/master/{job_id}/status until terminal state. Returns the state dict."""
     deadline = time.time() + timeout_s
     while time.time() < deadline:
-        r = client.get(f"/master/{job_id}/status")
+        r = client.get(f"/api/master/{job_id}/status")
         assert r.status_code == 200, r.text
         state = r.json()
         if state["status"] in ("ready", "error"):
@@ -54,10 +59,10 @@ def _wait_until_ready(client: TestClient, job_id: str, timeout_s: float = 60.0):
 
 
 def test_master_endpoint_returns_job_id_immediately(client: TestClient, wav_bytes: bytes):
-    """POST /master must return within 1s with {job_id, status:'queued'}."""
+    """POST /api/master must return within 1s with {job_id, status:'queued'}."""
     t0 = time.time()
     res = client.post(
-        "/master",
+        "/api/master",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
     )
     elapsed = time.time() - t0
@@ -67,12 +72,12 @@ def test_master_endpoint_returns_job_id_immediately(client: TestClient, wav_byte
     assert body["status"] == "queued"
     assert body["status_url"] == f"/api/master/{body['job_id']}/status"
     # Async guarantee: the request returns before the render finishes.
-    assert elapsed < 5.0, f"POST /master took {elapsed:.1f}s — should be near-instant"
+    assert elapsed < 5.0, f"POST /api/master took {elapsed:.1f}s — should be near-instant"
 
 
 def test_status_endpoint_404_for_unknown_job(client: TestClient):
-    """GET /master/does_not_exist/status must return 404."""
-    r = client.get("/master/does_not_exist/status")
+    """GET /api/master/does_not_exist/status must return 404."""
+    r = client.get("/api/master/does_not_exist/status")
     assert r.status_code == 404
 
 
@@ -81,7 +86,7 @@ def test_status_endpoint_reports_progress_and_eventually_ready(
 ):
     """Polling /status eventually returns 'ready' with all 6 variants."""
     res = client.post(
-        "/master",
+        "/api/master",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
     )
     job_id = res.json()["job_id"]
@@ -103,16 +108,16 @@ def test_status_endpoint_reports_progress_and_eventually_ready(
 
 
 def test_download_per_preset(client: TestClient, wav_bytes: bytes):
-    """GET /download/{job_id}/{preset_id} serves the per-preset mastered WAV."""
+    """GET /api/download/{job_id}/{preset_id} serves the per-preset mastered WAV."""
     res = client.post(
-        "/master",
+        "/api/master",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
     )
     state = _wait_until_ready(client, res.json()["job_id"], timeout_s=60.0)
     job_id = state["job_id"]
 
     for preset_id in PRESETS:
-        dres = client.get(f"/download/{job_id}/{preset_id}")
+        dres = client.get(f"/api/download/{job_id}/{preset_id}")
         assert dres.status_code == 200, f"preset {preset_id}: {dres.text}"
         assert dres.headers["content-type"] == "audio/wav"
         body = dres.content
@@ -124,12 +129,12 @@ def test_download_per_preset(client: TestClient, wav_bytes: bytes):
 def test_download_unknown_preset(client: TestClient, wav_bytes: bytes):
     """Unknown preset_id must return 404, not 500."""
     res = client.post(
-        "/master",
+        "/api/master",
         files={"file": ("test.wav", wav_bytes, "audio/wav")},
     )
     state = _wait_until_ready(client, res.json()["job_id"], timeout_s=60.0)
     job_id = state["job_id"]
-    bad = client.get(f"/download/{job_id}/does_not_exist")
+    bad = client.get(f"/api/download/{job_id}/does_not_exist")
     assert bad.status_code == 404
 
 
