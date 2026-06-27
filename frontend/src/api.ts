@@ -52,18 +52,39 @@ export interface MasterStatusResponse {
 }
 
 export async function masterStatus(jobId: string): Promise<MasterStatusResponse> {
-  const res = await fetch(`${API_BASE}/master/${jobId}/status`);
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail ?? detail;
-    } catch {
-      // fallthrough
+  // Poll with retry on transient 502/503/504 — Render free-tier workers are
+  // killed and restarted on the 15-min sleep boundary, and the edge proxy
+  // returns 502 to in-flight requests during that window. After a worker
+  // restart the in-memory job registry is empty, so a retry that succeeds
+  // HTTP-wise will then 404; the caller surfaces that case as a clearer
+  // "render lost" message.
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(`${API_BASE}/master/${jobId}/status`);
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      lastErr = new Error(`${res.status} ${res.statusText}`);
+      continue;
     }
-    throw new Error(`${res.status} ${detail}`);
+    if (res.status === 404) {
+      throw new Error(
+        "Render lost — Render restarted the worker mid-render (15-min " +
+          "sleep kicked in). Upload the file again to retry."
+      );
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        // fallthrough
+      }
+      throw new Error(`${res.status} ${detail}`);
+    }
+    return (await res.json()) as MasterStatusResponse;
   }
-  return (await res.json()) as MasterStatusResponse;
+  throw lastErr ?? new Error("Status poll failed after retries.");
 }
 
 // Build a URL the browser can fetch directly to stream the mastered WAV

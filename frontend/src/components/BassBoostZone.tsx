@@ -100,6 +100,22 @@ export default function BassBoostZone({ className }: Props) {
           await new Promise((r) => setTimeout(r, 1000));
           attempts += 1;
           const res = await fetch(statusUrl, { signal: controller.signal });
+          if (res.status === 502 || res.status === 503 || res.status === 504) {
+            // Transient cold-start on Render free tier (worker just restarted
+            // after the 15-min sleep). Retry with backoff — the job_id is
+            // server-side, and if the registry survived the restart the next
+            // poll will succeed. If the job itself is gone (404), we surface
+            // a clearer message below.
+            await new Promise((r) => setTimeout(r, 3000));
+            attempts -= 1; // don't count transient errors against the 240-attempt budget
+            continue;
+          }
+          if (res.status === 404) {
+            throw new Error(
+              "Render lost — Render restarted the worker mid-render (15-min " +
+                "sleep kicked in). Upload the file again to retry."
+            );
+          }
           if (!res.ok) {
             throw new Error(`Status poll failed: ${res.status} ${res.statusText}`);
           }
