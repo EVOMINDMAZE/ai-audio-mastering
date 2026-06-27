@@ -68,3 +68,12 @@ services:
         value: "1"
       - key: NUMEXPR_NUM_THREADS
         value: "1"
+      # AI Mastering (DeepSeek). Disabled by default — the Space keeps working
+      # as a regular preset-based mastering tool until DEEPSEEK_API_KEY is
+      # supplied and LLM_ENABLED flipped to true via the Space/Render UI.
+      - key: LLM_ENABLED
+        value: "false"
+      - key: DEEPSEEK_MODEL
+        value: deepseek-chat
+      - key: DEEPSEEK_BASE_URL
+        value: https://api.deepseek.com/v1

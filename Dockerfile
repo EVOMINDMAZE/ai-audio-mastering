@@ -57,18 +57,23 @@ COPY --from=frontend-builder /build/dist /app/backend/frontend_dist
 # non-existent /app/backend/app/frontend_dist and the SPA mount is
 # silently skipped → / returns 404.
 ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PORT=7860 \
-    JOB_TMP_DIR=/tmp/audio_jobs \
-    APP_ENV=production \
-    CORS_ORIGINS='["*"]' \
-    FRONTEND_DIST=/app/backend/frontend_dist \
-    MAX_RENDER_WORKERS=1 \
-    MAX_UPLOAD_MB=25 \
-    OMP_NUM_THREADS=1 \
-    MKL_NUM_THREADS=1 \
-    OPENBLAS_NUM_THREADS=1 \
-    NUMEXPR_NUM_THREADS=1
+        PYTHONDONTWRITEBYTECODE=1 \
+        PORT=7860 \
+        JOB_TMP_DIR=/tmp/audio_jobs \
+        APP_ENV=production \
+        CORS_ORIGINS='["*"]' \
+        FRONTEND_DIST=/app/backend/frontend_dist \
+        MAX_RENDER_WORKERS=1 \
+        MAX_UPLOAD_MB=25 \
+        OMP_NUM_THREADS=1 \
+        MKL_NUM_THREADS=1 \
+        OPENBLAS_NUM_THREADS=1 \
+        NUMEXPR_NUM_THREADS=1 \
+        # LLM-driven mastering (DeepSeek). Disabled by default; enable via env
+        # vars injected by HF Spaces Variables / Render env vars.
+        LLM_ENABLED=false \
+        DEEPSEEK_MODEL=deepseek-chat \
+        DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 
 # HF Spaces container orchestration respects $PORT; default to 7860 if absent.
 EXPOSE 7860

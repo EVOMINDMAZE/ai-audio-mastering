@@ -58,6 +58,16 @@ class Settings(BaseSettings):
     # ---- Phase 2 (reserved) --------------------------------------------------
     openai_api_key: str = ""
 
+    # ---- LLM-driven mastering (DeepSeek, OpenAI-compatible) -----------------
+    # When LLM_ENABLED is True and DEEPSEEK_API_KEY is set, /api/ai-master is
+    # available. When LLM_ENABLED is False (default), that endpoint returns
+    # 503 so the rest of the app keeps working without a key configured.
+    llm_enabled: bool = False
+    deepseek_api_key: str = ""
+    deepseek_model: str = "deepseek-chat"
+    deepseek_base_url: str = "https://api.deepseek.com/v1"
+    deepseek_timeout_s: float = 30.0
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

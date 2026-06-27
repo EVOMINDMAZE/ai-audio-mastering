@@ -4,6 +4,7 @@ import { useMasterJob } from "./useMasterJob";
 import type { AnalysisResult, MasterResult } from "./types";
 import UploadZone from "./components/UploadZone";
 import BassBoostZone from "./components/BassBoostZone";
+import AIMasterZone from "./components/AIMasterZone";
 import AnalysisDashboard from "./components/AnalysisDashboard";
 import MasterPanel from "./components/MasterPanel";
 

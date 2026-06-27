@@ -24,6 +24,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
 from .jobs import registry
+from .routes import ai_master as ai_master_routes
 from .routes import analyze as analyze_routes
 from .routes import master as master_routes
 
@@ -102,6 +103,7 @@ def create_app() -> FastAPI:
     # NOT used in dev — the Vite proxy strips it via `rewrite: p => p.replace(/^\/api/, "")`.
     app.include_router(analyze_routes.router, prefix="/api")
     app.include_router(master_routes.router, prefix="/api")
+    app.include_router(ai_master_routes.router, prefix="/api")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:
