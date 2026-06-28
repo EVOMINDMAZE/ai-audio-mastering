@@ -6,6 +6,7 @@ import {
   type AiMasterStartResponse,
   type AiMasterStatusResponse,
 } from "../api";
+import { AnalysisExtendedPanel } from "./AnalysisExtendedPanel";
 
 type Phase = "idle" | "submitting" | "polling" | "ready" | "error";
 
@@ -110,6 +111,14 @@ function AIMasterZoneImpl() {
                 <li>Duration: {fmt(inFeats.duration_s, "s")}</li>
               </ul>
             </details>
+          )}
+
+          {inFeats?.genre && (
+            <AnalysisExtendedPanel
+              data={{
+                genre: inFeats.genre,
+              }}
+            />
           )}
 
           {Object.keys(startResp.overrides).length > 0 && (

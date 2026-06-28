@@ -27,6 +27,7 @@ class MasterJob:
     status: str = "queued"  # "queued" | "processing" | "ready" | "error"
     error: Optional[str] = None
     variants: List[Dict[str, Any]] = field(default_factory=list)
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> Dict[str, Any]:
         return {
@@ -34,6 +35,7 @@ class MasterJob:
             "status": self.status,
             "error": self.error,
             "variants": list(self.variants),
+            "metadata": dict(self.metadata),
         }
 
 

@@ -14,7 +14,7 @@ import os
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 
 from .. import audio_engine
 from ..models import AnalysisResult
@@ -73,18 +73,34 @@ def _save_upload(upload: UploadFile, job_dir: Path) -> Path:
 
 
 @router.post("/analyze", response_model=AnalysisResult)
-async def analyze_endpoint(file: UploadFile = File(...)) -> AnalysisResult:
+async def analyze_endpoint(
+    file: UploadFile = File(...),
+    extended: bool = Query(
+        False,
+        description=(
+            "When true, return the extended analysis payload (crest factor, "
+            "stereo width, spectral centroid, spectral flatness, band "
+            "energy fractions, A-weighted loudness). Default false keeps "
+            "the original 7-field response shape."
+        ),
+    ),
+) -> AnalysisResult:
     """Accept an audio upload and return its analysis payload."""
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename.")
 
     job_id = uuid.uuid4().hex[:12]
     job_dir = get_job_dir(job_id)
-    logger.info("analyze: job_id=%s filename=%s", job_id, file.filename)
+    logger.info(
+        "analyze: job_id=%s filename=%s extended=%s", job_id, file.filename, extended
+    )
 
     saved_path = _save_upload(file, job_dir)
     try:
-        metrics = audio_engine.analyze(str(saved_path))
+        if extended:
+            metrics = audio_engine.analyze_extended(str(saved_path))
+        else:
+            metrics = audio_engine.analyze(str(saved_path))
     except Exception as e:
         logger.exception("analyze failed for job_id=%s", job_id)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}") from e

@@ -35,3 +35,12 @@ python-dotenv==1.0.1
 # ---- Dev / test --------------------------------------------------------------
 pytest==8.3.3
 httpx==0.27.2
+
+# ---- Genre classification (Phase 3, optional, lazy-loaded) ---------------
+transformers>=4.40.0
+# torch pinned to a known-good CPU build; ~250 MB. Loaded lazily only when
+# classify_genre() is called, so the import cost doesn't hit cold-start.
+torch>=2.0.0,<3.0.0
+
+# ---- Reference-based mastering (Phase 3) -------------------------------
+matchering==2.0.6

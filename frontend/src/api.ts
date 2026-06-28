@@ -103,6 +103,7 @@ export interface AiMasterInputFeatures {
   mud_flag: boolean | null;
   clipping_flag: boolean | null;
   duration_s: number | null;
+  genre?: string | null;
 }
 
 export interface AiMasterStartResponse {
@@ -177,4 +178,100 @@ export async function aiMasterStatus(jobId: string): Promise<AiMasterStatusRespo
 
 export function aiMasterDownloadUrl(jobId: string): string {
   return `${API_BASE}/ai-master/${jobId}/download`;
+}
+
+// ---- Reference-based mastering (Matchering) --------------------------------
+
+export interface ReferenceMasterStartResponse {
+  job_id: string;
+  status: "queued";
+  status_url: string;
+  download_url: string;
+}
+
+export interface ReferenceMasterGenre {
+  label: string | null;
+  score: number | null;
+  warning?: string | null;
+}
+
+export interface ReferenceMasterMetadata {
+  genre?: ReferenceMasterGenre;
+}
+
+export interface ReferenceMasterStatusResponse {
+  job_id: string;
+  status: "queued" | "processing" | "ready" | "error";
+  error: string | null;
+  variants: AiMasterVariant[];
+  metadata?: ReferenceMasterMetadata;
+}
+
+async function postTwoFiles<T>(
+  path: string,
+  target: File,
+  reference: File,
+): Promise<T> {
+  const form = new FormData();
+  form.append("target", target);
+  form.append("reference", reference);
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: "POST",
+    body: form,
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      // fallthrough
+    }
+    throw new Error(`${res.status} ${detail}`);
+  }
+  return (await res.json()) as T;
+}
+
+export async function referenceMasterStart(
+  target: File,
+  reference: File,
+): Promise<ReferenceMasterStartResponse> {
+  return postTwoFiles<ReferenceMasterStartResponse>(
+    "/reference-master",
+    target,
+    reference,
+  );
+}
+
+export async function referenceMasterStatus(
+  jobId: string,
+): Promise<ReferenceMasterStatusResponse> {
+  let lastErr: Error | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const res = await fetch(`${API_BASE}/reference-master/${jobId}/status`);
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+      lastErr = new Error(`${res.status} ${res.statusText}`);
+      continue;
+    }
+    if (res.status === 404) {
+      throw new Error("Job lost — worker restarted. Upload again to retry.");
+    }
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail ?? detail;
+      } catch {
+        // fallthrough
+      }
+      throw new Error(`${res.status} ${detail}`);
+    }
+    return (await res.json()) as ReferenceMasterStatusResponse;
+  }
+  throw lastErr ?? new Error("reference-master status poll failed after retries.");
+}
+
+export function referenceMasterDownloadUrl(jobId: string): string {
+  return `${API_BASE}/reference-master/${jobId}/download`;
 }

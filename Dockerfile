@@ -73,7 +73,9 @@ ENV PYTHONUNBUFFERED=1 \
         # vars injected by HF Spaces Variables / Render env vars.
         LLM_ENABLED=false \
         DEEPSEEK_MODEL=deepseek-chat \
-        DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+        DEEPSEEK_BASE_URL=https://api.deepseek.com/v1 \
+        REFERENCE_MASTERING_ENABLED=true \
+        GENRE_CLASSIFICATION_ENABLED=true
 
 # HF Spaces container orchestration respects $PORT; default to 7860 if absent.
 EXPOSE 7860

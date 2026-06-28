@@ -30,6 +30,28 @@ A browser-based audio mastering tool with two flows:
 - **Audio DSP**: HPF → 3-band EQ → Compressor → Pitch/Time/Reverb (viral
   presets) → LUFS normalization → True-peak brick-wall limiter
 
+## API Endpoints
+
+- `POST /api/master` — Render 11 preset variants in parallel
+- `POST /api/bass-boost` — Quick bass-boosted master
+- `POST /api/ai-master` — LLM-driven preset picking (DeepSeek)
+- `POST /api/reference-master` — Matchering-based reference matching (target + reference uploads)
+- `POST /api/analyze` — Audio analysis (supports `?extended=true` for 6 extra features + genre)
+- `GET /api/master/{job_id}/status`, `GET /api/ai-master/{job_id}/status`, `GET /api/reference-master/{job_id}/status` — async job status
+- `GET /api/master/{job_id}/download/{preset_id}`, `GET /api/ai-master/{job_id}/download`, `GET /api/reference-master/{job_id}/download` — WAV downloads
+
+### Extended Analysis
+
+Pass `?extended=true` to `/api/analyze` to get:
+
+- `crest_factor_db` — peak-to-RMS ratio (dB)
+- `stereo_width` — L/R correlation-based (0..1)
+- `spectral_centroid_hz` — brightness indicator
+- `spectral_flatness` — noisiness (0=tonal, 1=noisy)
+- `band_energy_low_mid_high` — [low, mid, high] energy fractions
+- `perceived_loudness_db` — A-weighted RMS
+- `genre` — top-1 AudioSet label (e.g. "music", "speech")
+
 ---
 
 ## 🚀 Deploy in 5 minutes from your iPhone (no laptop)

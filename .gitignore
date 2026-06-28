@@ -61,3 +61,5 @@ frontend/dist/
 /koyeb
 /koyeb-cli
 koyeb-cli-*
+# ---- Test fixtures (binary WAVs — kept on disk, not in git) ----------------
+backend/tests/fixtures/*.wav

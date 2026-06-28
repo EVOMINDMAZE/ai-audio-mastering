@@ -78,6 +78,16 @@ async def ai_master_endpoint(file: UploadFile = File(...)) -> dict:
         logger.exception("ai-master: analyze failed for job_id=%s", job_id)
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}") from e
 
+    # ---- 2b. Genre classification (lazy HF model, may fail) ---------------
+    try:
+        genre = audio_engine.classify_genre(str(saved_path))
+    except Exception as e:
+        logger.warning("ai-master: genre classification failed: %s", e)
+        genre = {"label": None, "score": None, "warning": str(e)}
+
+    # Merge the genre label into the feature dict so the LLM prompt can use it.
+    features["genre"] = genre.get("label")
+
     # ---- 3. Ask the LLM (or fall back) -------------------------------------
     source = "llm"
     recommendation: dict
@@ -101,6 +111,8 @@ async def ai_master_endpoint(file: UploadFile = File(...)) -> dict:
             "source": source,
             "overrides": recommendation["overrides"],
             "reasoning": recommendation["reasoning"],
+            "genre": genre.get("label"),
+            "genre_warning": genre.get("warning"),
             "input_features": {
                 "lufs": features.get("lufs_integrated"),
                 "peak_dbtp": features.get("true_peak_dbtp"),
@@ -126,6 +138,8 @@ async def ai_master_endpoint(file: UploadFile = File(...)) -> dict:
         "preset_id": recommendation["preset_id"],
         "overrides": recommendation["overrides"],
         "reasoning": recommendation["reasoning"],
+        "genre": genre.get("label"),
+        "genre_warning": genre.get("warning"),
         "input_features": {
             "lufs": features.get("lufs_integrated"),
             "peak_dbtp": features.get("true_peak_dbtp"),

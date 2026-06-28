@@ -77,3 +77,7 @@ services:
         value: deepseek-chat
       - key: DEEPSEEK_BASE_URL
         value: https://api.deepseek.com/v1
+      - key: REFERENCE_MASTERING_ENABLED
+        value: "true"
+      - key: GENRE_CLASSIFICATION_ENABLED
+        value: "true"

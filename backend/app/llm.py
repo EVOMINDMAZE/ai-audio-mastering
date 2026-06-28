@@ -162,6 +162,20 @@ def _build_system_prompt() -> str:
         "  compression so you don't pile on more limiting.\n"
         "- If mud_flag is true, do NOT increase eq_low_gain_db; consider reducing it.\n"
         "- If clipping_flag is true, leave true_peak_ceiling_dbtp at -1.0 or tighter.\n"
+        "- If `crest_factor_db > 14`, the input is already mastered — pick `acoustic` "
+        "and don't apply additional compression (no eq_low_gain_db boost, gentle comp).\n"
+        "- If `stereo_width < 0.1`, the input is mono or near-mono — do not apply any "
+        "stereo widening. If `stereo_width > 0.7`, it's already wide — don't add stereo "
+        "enhancement. The engine doesn't have a stereo widener knob, but consider keeping "
+        "eq_mid_freq_hz lower and avoiding high-frequency boosts that would expose mono "
+        "mismatch artifacts.\n"
+        "- If `genre` is set (e.g. 'rock', 'hip-hop', 'electronic', 'classical', 'speech', "
+        "'podcast'), weight the preset choice accordingly: hip-hop/electronic→`loud` or "
+        "`edm`; classical/jazz→`acoustic` or `warm`; speech→`podcast`; otherwise prefer "
+        "`streaming` as the safe default.\n"
+        "- `band_energy_low_mid_high` is a 3-element list [low_frac, mid_frac, high_frac]. "
+        "If low_frac > 0.5 (muddy), reduce `eq_low_gain_db` to ≤ 0. If high_frac > 0.5 "
+        "(too bright), reduce `eq_high_gain_db` to ≤ 0.\n"
     )
 
 
@@ -178,6 +192,14 @@ def _format_features(features: Dict[str, Any]) -> str:
         "clipping_flag",
         "duration_s",
         "sample_rate",
+        # Phase 3 — extended analysis + genre
+        "crest_factor_db",
+        "stereo_width",
+        "spectral_centroid_hz",
+        "spectral_flatness",
+        "band_energy_low_mid_high",
+        "perceived_loudness_db",
+        "genre",
     }
     slim = {k: v for k, v in features.items() if k in keep}
     return json.dumps(slim, indent=2, default=str)

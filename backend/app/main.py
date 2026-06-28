@@ -27,6 +27,7 @@ from .jobs import registry
 from .routes import ai_master as ai_master_routes
 from .routes import analyze as analyze_routes
 from .routes import master as master_routes
+from .routes import reference_master as reference_master_routes
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +105,7 @@ def create_app() -> FastAPI:
     app.include_router(analyze_routes.router, prefix="/api")
     app.include_router(master_routes.router, prefix="/api")
     app.include_router(ai_master_routes.router, prefix="/api")
+    app.include_router(reference_master_routes.router, prefix="/api")
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:

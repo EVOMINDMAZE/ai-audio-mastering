@@ -5,6 +5,7 @@ import type { AnalysisResult, MasterResult } from "./types";
 import UploadZone from "./components/UploadZone";
 import BassBoostZone from "./components/BassBoostZone";
 import AIMasterZone from "./components/AIMasterZone";
+import { ReferenceMasterZone } from "./components/ReferenceMasterZone";
 import AnalysisDashboard from "./components/AnalysisDashboard";
 import MasterPanel from "./components/MasterPanel";
 
@@ -103,6 +104,8 @@ export default function App() {
                 error={analyzeError}
               />
               <BassBoostZone />
+              <AIMasterZone />
+              <ReferenceMasterZone />
             </div>
           ) : (
             <div className="space-y-6">

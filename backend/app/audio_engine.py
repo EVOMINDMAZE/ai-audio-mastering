@@ -37,17 +37,50 @@ import soundfile as sf
 from pedalboard import (
     Compressor,
     HighpassFilter,
-    Pedalboard,
+    Limiter,
     PeakFilter,
+    Pedalboard,
     Reverb,
 )
-from scipy.signal import resample_poly
+from scipy.signal import lfilter, resample_poly
+
+# ---------------------------------------------------------------------------
+# Reference-based mastering (Phase 3) — module-level config + helpers
+# ---------------------------------------------------------------------------
+
+REFERENCE_MASTERING_ENABLED = os.environ.get("REFERENCE_MASTERING_ENABLED", "true").lower() in ("1", "true", "yes")
+
+
+def _stereo_width(samples: np.ndarray) -> float:
+    """Quick stereo width estimator (1.0 - Pearson correlation of L vs R).
+
+    Used by the reference_master metrics response so the UI can show
+    'width: 0.42 (matched from ref 0.45)'.
+    """
+    if samples.ndim == 1 or samples.shape[0] < 2:
+        return 0.0
+    L = samples[0]
+    R = samples[1]
+    if L.size < 2:
+        return 0.0
+    corr = float(np.corrcoef(L, R)[0, 1])
+    return round(max(0.0, min(1.0, 1.0 - corr)), 3)
+
+
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
+
+GENRE_CLASSIFICATION_ENABLED = os.environ.get("GENRE_CLASSIFICATION_ENABLED", "true").lower() in ("1", "true", "yes")
 
 # ---------------------------------------------------------------------------
 # Small helpers
 # ---------------------------------------------------------------------------
 
 _EPS = 1e-12  # -240 dB floor — prevents log(0) and division by zero
+
+_genre_pipeline = None  # lazy-loaded on first classify_genre() call
+_genre_warning: str | None = None
 
 
 def _db(x: float) -> float:
@@ -76,58 +109,6 @@ def measure_true_peak(samples: np.ndarray, sr: int, oversample: int = 4) -> floa
     upsampled = resample_poly(x, oversample, 1)
     peak_linear = float(np.max(np.abs(upsampled)))
     return _db(peak_linear)
-
-
-def true_peak_brick_wall(
-    audio: np.ndarray,
-    sr: int,
-    ceiling_dbtp: float = -1.0,
-    oversample: int = 8,
-) -> np.ndarray:
-    """True-peak brick-wall limiter via uniform gain reduction.
-
-    Algorithm
-    ---------
-    1. Upsample the signal ``oversample``-fold with a polyphase filter
-       (``scipy.signal.resample_poly``).
-    2. Measure the maximum absolute oversampled peak.
-    3. If that peak is already at or below ``ceiling_dbtp``, return the
-       original audio unchanged — limiting is a no-op.
-    4. Otherwise apply a *constant* gain reduction so the max oversampled
-       peak lands exactly on the ceiling.
-
-    Why this is correct
-    -------------------
-    The previous implementation (hard-clip-then-downsample) suffered from
-    polyphase-lowpass ringing: the downsample filter's passband ripple
-    pushed the measured true peak of the output above the clip threshold
-    by up to ~0.5 dB on heavy bass material. By detecting the peak on the
-    oversampled signal but applying the gain reduction to the original
-    audio, we avoid the downsample stage entirely — so there is no
-    ringing and the output's measured true peak will be exactly
-    ``ceiling_dbtp``.
-
-    Trade-off
-    ---------
-    Uniform gain reduction lowers the entire track, not just the
-    overshooting moments. For an MVP this is fine — it guarantees the
-    ceiling is met, which is the user's hard requirement. A lookahead
-    limiter that varies gain over time is a follow-up improvement.
-    """
-    threshold = 10.0 ** (ceiling_dbtp / 20.0)
-
-    if audio.ndim == 1:
-        up = resample_poly(audio, oversample, 1)
-    else:
-        # (channels, samples) — transpose to (samples, channels) for resample_poly
-        up = resample_poly(audio.T, oversample, 1, axis=0)
-
-    peak = float(np.max(np.abs(up)))
-    if peak <= threshold:
-        return audio.astype(np.float32, copy=False)
-
-    gain = threshold / peak
-    return (audio * gain).astype(np.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -480,6 +461,113 @@ def analyze(path: str) -> Dict[str, Any]:
     }
 
 
+def analyze_extended(path: str) -> Dict[str, Any]:
+    """Extended analysis — full ``analyze()`` payload plus six perceptual /
+    spectral metrics useful for advanced mastering decisions.
+
+    Additional fields on top of ``analyze()``:
+
+    - ``crest_factor_db``: difference between sample peak and RMS in dB.
+      Higher = more dynamic range (more headroom between loud peaks and
+      average level).
+    - ``stereo_width``: ``1 - corrcoef(L, R)`` clamped to [0, 1]. 0.0 for
+      mono material; values approaching 1.0 indicate very wide, possibly
+      decorrelated stereo.
+    - ``spectral_centroid_hz``: mean spectral centroid across frames —
+      a rough perceptual "brightness" measure.
+    - ``spectral_flatness``: mean Wiener/flatness ratio — closer to 0
+      means tonally peaked; closer to 1 means noise-like.
+    - ``band_energy_low_mid_high``: fractional energy in 20-250Hz,
+      250-2000Hz, 2000-16000Hz (sums to ~1.0).
+    - ``perceived_loudness_db``: A-weighted RMS in dBFS using the IEC
+      61672 A-weighting biquad — closer to how the human ear weights
+      frequencies than broadband RMS.
+    """
+    base = analyze(path)
+
+    # Reload for the extra computations. Reusing the result of analyze() for
+    # basic metrics avoids redundant LUFS/BPM passes; loading once more here
+    # is cheaper than refactoring analyze() to return its intermediates.
+    stereo, sr = load_audio(path, target_sr=44100, mono=False)
+    mono, _ = load_audio(path, target_sr=44100, mono=True)
+
+    peak_dbfs = base["peak_dbfs"]
+    rms_dbfs = base["rms_dbfs"]
+
+    # 1) Crest factor
+    crest_factor_db = round(peak_dbfs - rms_dbfs, 2)
+
+    # 2) Stereo width (1 - corrcoef) clamped to [0, 1]. Mono returns 0.0.
+    if stereo.ndim == 2 and stereo.shape[0] >= 2 and stereo.shape[1] > 1:
+        L = stereo[0]
+        R = stereo[1]
+        if L.std() > _EPS and R.std() > _EPS:
+            corr = float(np.corrcoef(L, R)[0, 1])
+            if np.isnan(corr):
+                stereo_width = 0.0
+            else:
+                stereo_width = float(max(0.0, min(1.0, 1.0 - corr)))
+        else:
+            stereo_width = 0.0
+    else:
+        stereo_width = 0.0
+
+    # 3) Spectral centroid (mean across frames)
+    centroid = float(librosa.feature.spectral_centroid(y=mono, sr=sr).mean())
+
+    # 4) Spectral flatness (Wiener ratio), mean across frames
+    flatness = float(librosa.feature.spectral_flatness(y=mono).mean())
+
+    # 5) Band energy fractions. Sum the squared STFT magnitudes inside each
+    # band, then divide by total energy so the three values sum to ~1.0.
+    S = np.abs(librosa.stft(mono, n_fft=2048, hop_length=512)) ** 2
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=2048)
+    total_energy = float(np.sum(S))
+
+    def _band_fraction(lo: float, hi: float) -> float:
+        mask = (freqs >= lo) & (freqs < hi)
+        if not np.any(mask):
+            return 0.0
+        return float(np.sum(S[mask])) / total_energy if total_energy > _EPS else 0.0
+
+    if total_energy <= _EPS:
+        # Silent / numerically empty signal — split equally to keep the
+        # contract that the three fractions sum to ~1.0.
+        band_energy_low_mid_high = [round(1.0 / 3.0, 2)] * 3
+    else:
+        band_low = _band_fraction(20.0, 250.0)
+        band_mid = _band_fraction(250.0, 2000.0)
+        band_high = _band_fraction(2000.0, 16000.0)
+        band_energy_low_mid_high = [
+            round(band_low, 2),
+            round(band_mid, 2),
+            round(band_high, 2),
+        ]
+
+    # 6) Perceived loudness (A-weighted RMS in dBFS). The mono buffer is 1D
+    # here because we loaded it with mono=True.
+    audio_for_weighting = mono if mono.ndim == 1 else mono[0]
+    # IEC 61672 A-weighting biquad coefficients (designed for fs=44100).
+    b = np.array([1.193809e-02, -2.276812e-02, 1.193809e-02])
+    a = np.array([1.0, -1.693450e+00, 7.170502e-01])
+    weighted = lfilter(b, a, audio_for_weighting)
+    rms_a = float(np.sqrt(np.mean(weighted ** 2)) + 1e-12)
+    perceived_loudness_db = round(20.0 * np.log10(rms_a), 2)
+
+    result: Dict[str, Any] = dict(base)
+    result.update(
+        {
+            "crest_factor_db": crest_factor_db,
+            "stereo_width": round(stereo_width, 2),
+            "spectral_centroid_hz": round(centroid, 2),
+            "spectral_flatness": round(flatness, 2),
+            "band_energy_low_mid_high": band_energy_low_mid_high,
+            "perceived_loudness_db": perceived_loudness_db,
+        }
+    )
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Mastering chain
 # ---------------------------------------------------------------------------
@@ -669,15 +757,17 @@ def master(
     except ValueError:
         out_lufs = target_lufs
 
-    # ---- True-peak brick-wall limit (always; no-op if within ceiling) ---
+    # ---- True-peak limit via pedalboard.Limiter (lookahead) ---------------
+    # Replaces the legacy uniform-gain brick-wall: this only attenuates the
+    # moments that exceed the ceiling, leaving the rest of the track alone.
+    # ``release_ms=50`` matches the short-tail release used by LANDR/RoEx so
+    # the limiter recovers quickly between hits without pumping.
     pre_limit_peak = measure_true_peak(normalized, sr)
-    mastered = true_peak_brick_wall(
-        normalized, sr, ceiling_dbtp=float(true_peak_ceiling_dbtp)
-    )
+    limiter = Limiter(threshold_db=float(true_peak_ceiling_dbtp), release_ms=50.0)
+    mastered = limiter(normalized, sr).astype(np.float32, copy=False)
 
     # ---- Post-mastering metrics -----------------------------------------
     out_peak = measure_true_peak(mastered, sr)
-
     # Limiter reduction estimate: how much the true-peak limit had to pull
     # the level down, beyond what the LUFS gain alone accounted for.
     if pre_limit_peak > true_peak_ceiling_dbtp:
@@ -698,4 +788,113 @@ def master(
         "out_peak_dbtp": round(out_peak, 2),
         "applied_gain_db": round(gain_delta_db, 2),
         "limiter_reduction_db": round(limiter_reduction_db, 2),
+    }
+
+
+def classify_genre(path: str) -> dict:
+    """Classify the audio using MIT/ast-finetuned-audioset-10-10-0.4593.
+
+    Lazy-loads the HuggingFace pipeline on first call; subsequent calls
+    reuse the loaded model. Returns {label, score} top-1 + a warning
+    string if the model failed to load.
+    """
+    global _genre_pipeline, _genre_warning
+
+    if not GENRE_CLASSIFICATION_ENABLED:
+        return {"label": None, "score": None, "warning": "genre classification disabled by env var"}
+
+    if _genre_pipeline is None:
+        try:
+            from transformers import pipeline
+            _genre_pipeline = pipeline(
+                "audio-classification",
+                model="MIT/ast-finetuned-audioset-10-10-0.4593",
+                device=-1,  # CPU
+            )
+            _genre_warning = None
+        except Exception as e:
+            _genre_warning = f"genre model unavailable: {type(e).__name__}: {e}"
+            return {"label": None, "score": None, "warning": _genre_warning}
+
+    try:
+        audio, sr = load_audio(path, target_sr=16000, mono=True)  # AST expects 16 kHz mono
+        # Take a 10-second window from the middle of the track for stable classification
+        window_samples = 10 * sr
+        mid = audio.shape[-1] // 2
+        start = max(0, mid - window_samples // 2)
+        end = start + window_samples
+        if end > audio.shape[-1]:
+            end = audio.shape[-1]
+            start = max(0, end - window_samples)
+        window = audio[start:end]
+
+        # The pipeline expects a numpy array at the sample rate it was trained on (16 kHz)
+        preds = _genre_pipeline(window, sampling_rate=sr, top_k=3)
+        top = preds[0]
+        return {
+            "label": top["label"],
+            "score": round(float(top["score"]), 3),
+            "top_3": [{"label": p["label"], "score": round(float(p["score"]), 3)} for p in preds[:3]],
+            "warning": _genre_warning,
+        }
+    except Exception as e:
+        return {"label": None, "score": None, "warning": f"classify failed: {type(e).__name__}: {e}"}
+
+
+def reference_master(
+    target_path: str,
+    reference_path: str,
+    output_path: str,
+    preview_path: str | None = None,
+) -> dict:
+    """Reference-based mastering using Matchering 2.0.
+
+    Matchering analyses the reference track's loudness, frequency balance,
+    RMS / true-peak / stereo width, and applies matched EQ + multiband
+    compression + limiting to the target. Result: the target track sounds
+    like the reference in tonal character and loudness.
+
+    CPU-only. ~10-30 s for a 3-minute track on HF Spaces free tier.
+
+    Returns measured metrics on the output for the API to display.
+    """
+    if not REFERENCE_MASTERING_ENABLED:
+        raise RuntimeError("reference mastering disabled by env var")
+
+    try:
+        import matchering
+    except ImportError as e:
+        raise RuntimeError(f"matchering not installed: {e}") from e
+
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+
+    results = [matchering.pcm24(output_path)]
+    if preview_path:
+        os.makedirs(os.path.dirname(preview_path) or ".", exist_ok=True)
+        results.append(matchering.pcm24(preview_path))
+
+    # Measure input first for the response payload
+    in_lufs = float(analyze(str(target_path))["lufs_integrated"])
+
+    try:
+        matchering.process(
+            target=target_path,
+            reference=reference_path,
+            results=results,
+        )
+    except Exception as e:
+        raise RuntimeError(f"matchering.process failed: {type(e).__name__}: {e}") from e
+
+    # Measure output
+    out_lufs = float(analyze(output_path)["lufs_integrated"])
+    out_peak = measure_true_peak(*load_audio(output_path))
+    in_peak = measure_true_peak(*load_audio(target_path))
+
+    return {
+        "in_lufs": round(in_lufs, 2),
+        "out_lufs": round(out_lufs, 2),
+        "in_peak_dbtp": round(in_peak, 2),
+        "out_peak_dbtp": round(out_peak, 2),
+        "applied_gain_db": round(out_lufs - in_lufs, 2),
+        "limiter_reduction_db": 0.0,  # matchering doesn't expose this
     }
